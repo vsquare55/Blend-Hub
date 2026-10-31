@@ -1,0 +1,49 @@
+BLEND HUB ON A MACBOOK
+======================
+
+The Hub runs on a Mac exactly like on Windows - same data, same screens. Everything lives in this OneDrive folder, so the
+transactions, comments, milestones and backups you see on the Mac are the same ones your colleagues see on Windows.
+
+ONE-TIME SETUP (about 5 minutes)
+--------------------------------
+1. Let OneDrive finish syncing this whole folder to the Mac ("Always keep on this device" is best:
+   right-click the "EPC Deck Manager" folder in Finder > "Always Keep on This Device").
+
+2. Install Python 3 (any version 3.9 or newer; 3.12 is a good choice):
+   https://www.python.org/downloads/macos/   - download the normal installer and click through it.
+
+3. Install Google Chrome (or Microsoft Edge) if you do not have it. The Hub uses it to draw the PDFs and to open its own window.
+   Safari alone cannot make the PDFs (Excel exports still work).
+
+4. Make the launcher double-clickable. Open Terminal (Cmd + Space, type Terminal) and paste these two lines
+   (drag the "EPC Deck Manager" folder from Finder onto the Terminal window after typing "cd " so the path fills in):
+
+       cd "<drag the EPC Deck Manager folder here>"
+       chmod +x START_HERE.command
+
+   (OneDrive does not keep the "executable" flag from Windows, so this is needed once per Mac.)
+
+5. Double-click START_HERE.command.
+   - macOS may say it "cannot be opened because it is from an unidentified developer": right-click the file > Open > Open.
+     You only do this once.
+   - The first start creates a private Python environment (in your home folder, not in OneDrive) and installs python-pptx and
+     openpyxl. It needs internet and takes about a minute.
+   - Then Blend Hub opens in its own window.
+
+EVERY DAY
+---------
+Double-click START_HERE.command, keep the Terminal window open while you work, close it to stop the Hub.
+
+IMPORTANT - ONE EDITOR AT A TIME
+--------------------------------
+Only one person (or one computer) can edit at a time; everybody else sees the data read-only with a banner showing who is editing.
+If you work on both the Mac and the Windows PC: close the Hub on one before opening it on the other, and wait for OneDrive's
+green tick (sync finished) before you switch. "Take over editing" is in the banner if someone forgot to close theirs.
+
+IF SOMETHING DOES NOT WORK
+--------------------------
+- "Python 3 was not found"  -> do step 2, then double-click again.
+- PDF says Edge or Chrome is needed -> do step 3.
+- Nothing happens when you double-click -> do step 4 (chmod). Or open Terminal in this folder and run:  bash START_HERE.command
+- Deck generation (the "Decks" tab) needs the same Python; the first time it asks to install Tk if your Python lacks it:
+  the python.org installer already includes it.

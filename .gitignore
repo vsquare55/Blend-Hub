@@ -1,0 +1,36 @@
+# ---- confidential data: NEVER push these ----
+data/
+backups/
+output/
+dist/
+Editable HTML/
+Blend_Hub_Snapshot_*.html
+*.db
+*.db-journal
+hub.lock
+
+# ---- generated / local only ----
+_OLD_FILES_safe_to_ignore/
+mac_build/
+assets/
+presets/
+__pycache__/
+*.pyc
+*.pyo
+.DS_Store
+Thumbs.db
+~$*.xlsx
+~$*.docx
+~$*.pptx
+
+# ---- large source files that live elsewhere ----
+*.pptx
+*.docx
+EPC Deck Manager.zip
+projects_registry.xlsx
+BIP - Captive Projects*.xlsx
+BIP - Captive Projects*.csv
+*.pdf
+
+# ---- the shortcut (local to this machine) ----
+Blend DealFlow.lnk

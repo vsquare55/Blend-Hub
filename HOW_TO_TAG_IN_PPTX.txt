@@ -1,0 +1,44 @@
+TAGGING SLIDES IN A BASE DECK
+=============================
+
+Every PROJECT slide needs one line in its speaker Notes:
+
+    ID: togo_161kv_named          <- the NAMED slide of project "togo_161kv"
+    ID: togo_161kv_unnamed        <- the UNNAMED slide of the SAME project
+
+    ID: icc_convention            <- no suffix = ONE slide used for both versions
+
+Rules
+  * The text before _named / _unnamed is the project key. Same key = same project.
+  * Only ONE version of a project ever goes into a generated deck (no duplicates).
+  * A project with several slides per version: give every slide the same ID.
+  * Optional extra lines (first-time defaults only; Excel wins afterwards):
+        CATEGORY: Active            (Closed | Active | BIP | Hold)
+        NAME: Pretty Name           (name printed on the Project Index)
+        TYPE: divider|boilerplate|closing|skip   (for slides WITHOUT an ID)
+  * Slides without an ID are classified automatically:
+        before the first project  -> boilerplate (kept in every deck)
+        after the last project    -> closing (kept in every deck)
+        between projects          -> old divider (dropped; category dividers are generated)
+
+A project that has only a _named slide is SKIPPED whenever "Unnamed" is chosen
+(so a named slide can never leak into an unnamed deck). If one slide is fine for
+both, remove the "_named" suffix.
+
+After editing the base deck
+  * Save and close it, then just start the app (START_HERE.bat) - it re-syncs itself.
+  * Or double-click SYNC_FROM_PPTX.bat to see exactly what changed (new / removed / moved
+    projects and any problems it found).
+
+Replacing a whole base deck
+  * Double-click REPLACE_BASE.bat (or use "Replace base deck..." in the app).
+  * The new deck is checked first; the old one is archived in base\_archive.
+
+Optional "Indicative value" box (hidden by default)
+  * Name any shape on a slide  VALUE  (PowerPoint: Home > Arrange > Selection Pane > rename).
+  * It is REMOVED from the generated deck unless you tick "Value" for that project in the app
+    (or pass --show-value on the command line). Slides without such a shape have the tick greyed out.
+  * Put prices / project values ONLY in that shape, never in normal text, or they cannot be hidden.
+
+Easiest way to tag: the app's "Tag new slides" window (no typing in PowerPoint's notes needed).
+  Add slides -> save the deck -> in the app click "Tag new slides (n)" -> pick slide -> key + version -> Apply.

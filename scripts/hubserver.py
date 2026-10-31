@@ -15,13 +15,26 @@ import time
 import traceback
 import urllib.parse
 import webbrowser
+from http.cookies import SimpleCookie
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import hubdb as H
+import hubauth as A
 
 WEB = Path(__file__).resolve().parent / "hubweb"
 PORT = 8765
+SHARED = bool(os.environ.get("HUB_SHARE"))  # team mode: login + roles on, bind to the network
+
+# POST endpoints only a master may call (destructive, structural or admin). Everything
+# else that writes needs Editor or Master; viewers may not POST at all.
+MASTER_ONLY = {
+    "/api/txn/trash", "/api/party/delete", "/api/party/merge", "/api/party/dedupe",
+    "/api/vocab/merge", "/api/vocab/dedupe", "/api/geo", "/api/source/rename",
+    "/api/import", "/api/restore", "/api/restore_backup",
+    "/api/deck/delete", "/api/deck/retire", "/api/deck/rename", "/api/deck/move",
+    "/api/deck/add", "/api/deck/restore",
+}
 _SRC = [*Path(__file__).resolve().parent.glob("*.py"), WEB / "index.html"]
 VER = str(int(max(f.stat().st_mtime for f in _SRC if f.exists())))  # changes whenever the program files change
 LOCK: H.Lock = None  # type: ignore
@@ -65,10 +78,47 @@ class Handler(BaseHTTPRequestHandler):
     def _lock_info(self) -> dict:
         return {"mine": LOCK.mine, "holder": LOCK.holder, "user": LOCK.user}
 
+    def _session(self) -> dict | None:
+        """The logged-in user from the signed cookie, or None. Only meaningful in team mode."""
+        try:
+            ck = SimpleCookie(self.headers.get("Cookie", ""))
+            m = ck.get(A.cookie_name())
+            return A.read_token(m.value) if m else None
+        except Exception:
+            return None
+
+    def _set_cookie(self, token: str | None) -> dict:
+        maxage = A.SESSION_HOURS * 3600 if token else 0
+        return {"Set-Cookie": f"{A.cookie_name()}={token or ''}; Path=/; HttpOnly; SameSite=Lax; Max-Age={maxage}"}
+
     # ------------------------------------------------------------------ GET
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
         q = urllib.parse.parse_qs(u.query)
+        sess = self._session()
+        self._sess = sess
+        if SHARED:
+            # Pages / assets the login screen itself needs, before anyone is logged in.
+            if u.path in ("/login", "/login.html"):
+                return self._send(200, (WEB / "login.html").read_bytes(), "text/html; charset=utf-8")
+            if u.path == "/logo.png":
+                return self._send(200, (WEB / "logo.png").read_bytes(), "image/png")
+            if sess is None:
+                if u.path.startswith("/api/"):
+                    return self._json({"error": "Please sign in.", "login": True}, 401)
+                return self._send(302, b"", "text/plain", {"Location": "/login"})
+            if u.path == "/api/me":
+                return self._json({"shared": True, "user": sess["username"], "name": sess["name"], "role": sess["role"]})
+            if u.path == "/api/users":
+                if sess["role"] != "master":
+                    return self._json({"error": "Only a master can manage users."}, 403)
+                return self._json({"users": A.list_users(), "roles": [[r, A.ROLE_LABEL[r]] for r in A.ROLES]})
+            if u.path in ("/users", "/users.html"):
+                if sess["role"] != "master":
+                    return self._send(302, b"", "text/plain", {"Location": "/"})
+                return self._send(200, (WEB / "users.html").read_bytes(), "text/html; charset=utf-8")
+        elif u.path == "/api/me":
+            return self._json({"shared": False, "user": getpass.getuser(), "name": getpass.getuser().replace(".", " ").title(), "role": "master"})
         try:
             if u.path == "/api/all":
                 d = H.snapshot(self._hide())
@@ -129,7 +179,56 @@ class Handler(BaseHTTPRequestHandler):
                 LOCK.release()
             threading.Timer(0.4, lambda: os._exit(0)).start()
             return
-        by = urllib.parse.unquote(self.headers.get("X-User", "")) or LOCK.user
+
+        # ---------------------------------------------------------------- team mode: login & roles
+        if SHARED:
+            if u.path == "/api/login":
+                d = json.loads(raw.decode("utf-8") or "{}")
+                user = A.check_login(d.get("username", ""), d.get("password", ""))
+                if not user:
+                    return self._json({"error": "Wrong username or password."}, 401)
+                body = json.dumps({"ok": True, "user": user["username"], "name": user["name"], "role": user["role"], "must_change": user["must_change"]}).encode("utf-8")
+                return self._send(200, body, extra=self._set_cookie(A.make_token(user)))
+            if u.path == "/api/logout":
+                return self._send(200, b'{"ok":true}', extra=self._set_cookie(None))
+            sess = self._session()
+            self._sess = sess
+            if sess is None:
+                return self._json({"error": "Please sign in.", "login": True}, 401)
+            if u.path == "/api/password":  # change your own password
+                d = json.loads(raw.decode("utf-8") or "{}")
+                if not A.check_login(sess["username"], d.get("current", "")):
+                    return self._json({"error": "Your current password is wrong."}, 403)
+                try:
+                    A.set_password(sess["username"], d.get("new", ""), must_change=False)
+                except A.AuthError as e:
+                    return self._json({"error": str(e)}, 400)
+                return self._json({"ok": True})
+            if u.path.startswith("/api/users/"):  # master-only account management
+                if sess["role"] != "master":
+                    return self._json({"error": "Only a master can manage users."}, 403)
+                d = json.loads(raw.decode("utf-8") or "{}")
+                try:
+                    if u.path == "/api/users/add":
+                        A.add_user(d["username"], d.get("name", ""), d.get("role", "viewer"), d.get("password", ""), by=sess["username"], must_change=bool(d.get("must_change", True)))
+                    elif u.path == "/api/users/update":
+                        A.update_user(d["username"], by=sess["username"], name=d.get("name"), role=d.get("role"), active=d.get("active"))
+                    elif u.path == "/api/users/password":
+                        A.set_password(d["username"], d.get("password", ""), must_change=bool(d.get("must_change", True)))
+                    elif u.path == "/api/users/delete":
+                        A.delete_user(d["username"])
+                    else:
+                        return self._json({"error": "unknown call"}, 404)
+                    return self._json({"ok": True})
+                except A.AuthError as e:
+                    return self._json({"error": str(e)}, 400)
+            if sess["role"] == "viewer":
+                return self._json({"error": "You have view-only access. Ask a master to make you an Editor to change things."}, 403)
+            if u.path in MASTER_ONLY and sess["role"] != "master":
+                return self._json({"error": "That action needs master access."}, 403)
+            by = sess["name"] or sess["username"]
+        else:
+            by = urllib.parse.unquote(self.headers.get("X-User", "")) or LOCK.user
         try:
             if u.path == "/api/lock/take":
                 LOCK.try_acquire(force=True)
@@ -413,6 +512,15 @@ def _excel_loop():
 def main():
     global LOCK
     H.DATA.mkdir(exist_ok=True)
+    if SHARED:
+        creds = A.bootstrap()
+        if creds:
+            line = "=" * 64
+            print(f"\n{line}\n  FIRST-TIME SETUP - your master login was just created:\n"
+                  f"     username:  {creds['username']}\n"
+                  f"     password:  {creds['password']}\n"
+                  f"  Sign in with this, then open 'Users' to add your team.\n"
+                  f"  (Change this password after you sign in. Write it down now.)\n{line}\n")
     running = already_running()
     if running is not None:
         if running == VER:  # the same Hub is already open on this PC: just show it

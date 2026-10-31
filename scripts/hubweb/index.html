@@ -356,6 +356,7 @@ async function api(path, body) {
   const opt = body === undefined ? {headers: hh} : {method: "POST", headers: {"Content-Type": "application/json", "X-User": encodeURIComponent(S.user), ...hh}, body: JSON.stringify(body)};
   const r = await fetch(path, opt);
   const j = await r.json().catch(() => ({}));
+  if (r.status === 401 && j.login) { location.href = "/login"; throw new Error("not signed in"); }
   if (!r.ok) { toast(j.error || "Something went wrong", true); throw new Error(j.error || r.status); }
   return j;
 }
@@ -392,7 +393,8 @@ function index() {
     ATT[t.id] = a;
   });
 }
-const canEdit = () => S.data && S.data.lock.mine;
+const canEdit = () => S.data && S.data.lock.mine && !(S.me && S.me.role === "viewer");
+const isMaster = () => S.me && S.me.role === "master";
 const SU = () => S.data.enums.shortlisted_up;
 const links = (tid, type) => (LK[tid] || []).filter(l => l.p.type === type);
 const shortl = (tid, type) => links(tid, type).filter(l => SU().includes(l.status));
@@ -400,7 +402,8 @@ const ready = tid => { const c = CK[tid] || {}, std = S.data.enums.check_items, 
 async function load() {
   const d = await api("/api/all");
   S.data = d;
-  if (!S.user) { S.user = prompt("Your name (shown in the activity log next to every change):", d.default_user) || d.default_user; localStorage.setItem("hubUser", S.user); }
+  if (S.me && S.me.shared) { S.user = S.me.name || S.me.user; }
+  else if (!S.user) { S.user = prompt("Your name (shown in the activity log next to every change):", d.default_user) || d.default_user; localStorage.setItem("hubUser", S.user); }
   index(); S.stack = S.stack.filter(e => e.k !== "txn" || T[e.id]); if (S.sel && !T[S.sel]) { S.sel = null; if (!S.stack.length) closeDrawer(); }
   S.picked.forEach(id => { if (!T[id]) S.picked.delete(id); }); [...S.pick2].forEach(id => { if (!P[id]) S.pick2.delete(id); }); render();
   const tp = topP();
@@ -1904,16 +1907,52 @@ function viewReady() {
   return h + `</tbody></table><div class="vnote">"Latest meeting" is the most recent meeting that was held (else the next one planned); the # button opens all meetings of the transaction. The LoI / EoI "Sent" choices are the same as in the transaction's Readiness tab: Not yet · In progress · Sent · Not applicable. Anything marked <b>In progress</b> automatically gets an action (Actions page).<br><b>Documents:</b> click a cell to step through ✓ yes · ◐ in progress · Not yet · n/a · · (not marked). Shift + click adds or edits its comment (a small dot marks cells that have one). Right-click opens the transaction.</div>${rows.length > S.lim.ready ? `<div class="more">Showing ${S.lim.ready} of ${rows.length} <button class="btn sm" data-act="more-ready">Show 150 more</button> <button class="btn sm" data-act="all-ready">Show all</button></div>` : ""}</div>`;
 }
 
-let lastRev = null, lastMine = null;
-setInterval(async () => {
-  try {
-    const r = await fetch("/api/rev").then(r => r.json());
-    const ae = document.activeElement, busy = (ae && ["INPUT", "TEXTAREA", "SELECT"].includes(ae.tagName) && ae.id !== "bipfile") || $("#modalroot").innerHTML || (topP() && topP().k === "form");
-    if (lastRev !== null && (r.rev !== lastRev || r.lock.mine !== lastMine) && !busy && !S.openPop) await load();
-    lastRev = r.rev; lastMine = r.lock.mine;
-  } catch (e) { /* server closed */ }
-}, 12000);
-load().then(() => { fetch("/api/rev").then(r => r.json()).then(r => { lastRev = r.rev; lastMine = r.lock.mine; }); });
+let lastRev = null, lastMine = null, pollTimer = null;
+function startPoll(ms) {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const r = await fetch("/api/rev").then(r => r.json());
+      const ae = document.activeElement, busy = (ae && ["INPUT", "TEXTAREA", "SELECT"].includes(ae.tagName) && ae.id !== "bipfile") || $("#modalroot").innerHTML || (topP() && topP().k === "form");
+      if (lastRev !== null && (r.rev !== lastRev || r.lock.mine !== lastMine) && !busy && !S.openPop) await load();
+      lastRev = r.rev; lastMine = r.lock.mine;
+    } catch (e) { /* server closed */ }
+  }, ms);
+}
+startPoll(12000);
+
+/* ---- account bar (team mode): who you are, your access level, and sign-out ---- */
+function accountBar() {
+  if (!S.me || !S.me.shared) return;
+  let bar = document.getElementById("acctbar");
+  if (!bar) {
+    bar = document.createElement("div"); bar.id = "acctbar";
+    bar.style.cssText = "position:fixed;top:6px;right:10px;z-index:9999;display:flex;gap:8px;align-items:center;font:12px/1.4 system-ui,Segoe UI,Arial;background:rgba(255,255,255,.92);border:1px solid #d9dee6;border-radius:8px;padding:4px 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)";
+    document.body.appendChild(bar);
+    bar.addEventListener("click", async e => {
+      const a = e.target.dataset.acct; if (!a) return;
+      if (a === "logout") { await fetch("/api/logout", {method: "POST"}); location.href = "/login"; }
+      else if (a === "users") { location.href = "/users"; }
+      else if (a === "pw") {
+        const cur = prompt("Your current password:"); if (!cur) return;
+        const nw = prompt("New password (at least 6 characters):"); if (!nw) return;
+        const r = await fetch("/api/password", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({current: cur, new: nw})});
+        const j = await r.json().catch(() => ({})); toast(r.ok ? "Password changed" : (j.error || "Could not change password"), !r.ok);
+      }
+    });
+  }
+  const roleTxt = {master: "Master", editor: "Editor", viewer: "Viewer (read only)"}[S.me.role] || S.me.role;
+  const roleColor = {master: "#8e44ad", editor: "#1e7d34", viewer: "#6b7280"}[S.me.role] || "#333";
+  bar.innerHTML = `<span style="font-weight:600">${(S.me.name || S.me.user).replace(/</g, "&lt;")}</span>`
+    + `<span style="color:#fff;background:${roleColor};border-radius:6px;padding:1px 7px;font-size:11px">${roleTxt}</span>`
+    + (S.me.role === "master" ? `<a data-acct="users" style="cursor:pointer;color:#1d4ed8;text-decoration:underline">Users</a>` : "")
+    + `<a data-acct="pw" style="cursor:pointer;color:#555;text-decoration:underline">Password</a>`
+    + `<a data-acct="logout" style="cursor:pointer;color:#b91c1c;text-decoration:underline">Sign out</a>`;
+}
+
+fetch("/api/me").then(r => r.json()).then(me => { S.me = me; accountBar(); if (me && me.shared) startPoll(4000); })
+  .catch(() => { S.me = null; })
+  .finally(() => { load().then(() => { fetch("/api/rev").then(r => r.json()).then(r => { lastRev = r.rev; lastMine = r.lock.mine; }); }); });
 </script>
 </body>
 </html>

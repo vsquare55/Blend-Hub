@@ -118,7 +118,10 @@ def connect() -> sqlite3.Connection:
     DATA.mkdir(exist_ok=True)
     c = sqlite3.connect(DB_PATH, timeout=30)
     c.row_factory = sqlite3.Row
-    c.execute("PRAGMA journal_mode=DELETE")
+    # Team mode (one shared server, local disk): WAL lets readers run while one write is in flight.
+    # Solo / OneDrive mode: keep plain DELETE journaling (WAL side-files do not play well with OneDrive sync).
+    c.execute("PRAGMA journal_mode=WAL" if os.environ.get("HUB_SHARE") else "PRAGMA journal_mode=DELETE")
+    c.execute("PRAGMA busy_timeout=10000")
     c.executescript(SCHEMA)
     for tbl, cols in MIGRATE.items():
         have = {r[1] for r in c.execute(f"PRAGMA table_info({tbl})")}

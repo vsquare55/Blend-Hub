@@ -20,8 +20,9 @@ ROOT = Path(__file__).resolve().parent.parent
 TOP = "DealDeck Studio"
 KEEP_SITE = {"pptx", "openpyxl", "et_xmlfile", "lxml", "PIL", "xlsxwriter", "typing_extensions.py"}
 SKIP_LIB = {"test", "idlelib", "turtledemo", "ensurepip", "lib2to3", "__pycache__", "site-packages", "tkinter_demos"}
-PROJECT_FILES = ["START_HERE.bat", "REPLACE_BASE.bat", "SYNC_FROM_PPTX.bat", "_python.bat", "CREATE_DESKTOP_SHORTCUT.bat",
-                 "README.md", "HOW_TO_TAG_IN_PPTX.txt", "config.json", "requirements.txt", "projects_registry.xlsx"]
+PROJECT_FILES = ["START_HERE.bat", "START_TEAM.bat", "START_TUNNEL.bat", "REPLACE_BASE.bat", "SYNC_FROM_PPTX.bat",
+                 "_python.bat", "CREATE_DESKTOP_SHORTCUT.bat", "README.md", "TEAM_SETUP.md", "FOR_THE_TEAM.md",
+                 "HOW_TO_TAG_IN_PPTX.txt", "config.json", "requirements.txt", "projects_registry.xlsx"]
 
 README_PORTABLE = """DEALDECK STUDIO - PORTABLE COPY
 ===========================================

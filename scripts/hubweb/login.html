@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sign in · Blend Hub</title>
+<style>
+  :root { --ink:#1f2733; --mut:#6b7280; --line:#d9dee6; --accent:#1d4ed8; --bg:#eef1f6; }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body { font:15px/1.5 system-ui,"Segoe UI",Arial,sans-serif; color:var(--ink);
+         background:linear-gradient(160deg,#dfe6f2,#eef1f6 60%); display:flex; align-items:center; justify-content:center; padding:20px; }
+  .card { width:100%; max-width:360px; background:#fff; border:1px solid var(--line); border-radius:14px;
+          box-shadow:0 10px 30px rgba(20,30,60,.12); padding:28px 26px 24px; }
+  .brand { display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:18px; }
+  .brand img { height:46px; width:auto; }
+  .brand h1 { font-size:19px; margin:0; letter-spacing:.2px; }
+  .brand p { margin:0; color:var(--mut); font-size:12.5px; }
+  label { display:block; font-size:12.5px; color:var(--mut); margin:14px 0 5px; }
+  input { width:100%; padding:11px 12px; font-size:15px; border:1px solid var(--line); border-radius:9px; background:#fbfcfe; }
+  input:focus { outline:none; border-color:var(--accent); box-shadow:0 0 0 3px rgba(29,78,216,.12); }
+  button { width:100%; margin-top:20px; padding:12px; font-size:15px; font-weight:600; color:#fff; background:var(--accent);
+           border:0; border-radius:9px; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .err { margin-top:14px; color:#b91c1c; font-size:13px; min-height:18px; text-align:center; }
+  .foot { margin-top:18px; text-align:center; color:var(--mut); font-size:11.5px; }
+</style>
+</head>
+<body>
+  <form class="card" id="f" autocomplete="on">
+    <div class="brand">
+      <img src="/logo.png" alt="Blend Hub" onerror="this.style.display='none'">
+      <h1>Blend Hub</h1>
+      <p>Sign in to continue</p>
+    </div>
+    <label for="u">Username</label>
+    <input id="u" name="username" autocapitalize="off" autocorrect="off" spellcheck="false" autocomplete="username" required autofocus>
+    <label for="p">Password</label>
+    <input id="p" name="password" type="password" autocomplete="current-password" required>
+    <button id="go" type="submit">Sign in</button>
+    <div class="err" id="err"></div>
+    <div class="foot">Blend Finance · Strictly private &amp; confidential</div>
+  </form>
+<script>
+  const f = document.getElementById("f"), err = document.getElementById("err"), go = document.getElementById("go");
+  f.addEventListener("submit", async e => {
+    e.preventDefault(); err.textContent = ""; go.disabled = true; go.textContent = "Signing in…";
+    try {
+      const r = await fetch("/api/login", {
+        method: "POST", headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({username: document.getElementById("u").value.trim(), password: document.getElementById("p").value})
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { err.textContent = j.error || "Sign in failed."; go.disabled = false; go.textContent = "Sign in"; return; }
+      location.href = "/";
+    } catch (ex) {
+      err.textContent = "Could not reach the Hub. Check your connection."; go.disabled = false; go.textContent = "Sign in";
+    }
+  });
+</script>
+</body>
+</html>

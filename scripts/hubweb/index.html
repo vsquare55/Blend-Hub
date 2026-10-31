@@ -393,7 +393,9 @@ function index() {
     ATT[t.id] = a;
   });
 }
-const canEdit = () => S.data && S.data.lock.mine && !(S.me && S.me.role === "viewer");
+/* In solo mode (not shared) everything is allowed. In team mode, use the per-user caps from the server. */
+const can = c => !(S.me && S.me.shared) || !!(S.me.caps && S.me.caps[c]);
+const canEdit = () => S.data && S.data.lock.mine && can("edit_txn");
 const isMaster = () => S.me && S.me.role === "master";
 const SU = () => S.data.enums.shortlisted_up;
 const links = (tid, type) => (LK[tid] || []).filter(l => l.p.type === type);
@@ -402,6 +404,7 @@ const ready = tid => { const c = CK[tid] || {}, std = S.data.enums.check_items, 
 async function load() {
   const d = await api("/api/all");
   S.data = d;
+  if (d.me) { S.me = Object.assign({shared: true}, d.me); if (typeof accountBar === "function") accountBar(); }
   if (S.me && S.me.shared) { S.user = S.me.name || S.me.user; }
   else if (!S.user) { S.user = prompt("Your name (shown in the activity log next to every change):", d.default_user) || d.default_user; localStorage.setItem("hubUser", S.user); }
   index(); S.stack = S.stack.filter(e => e.k !== "txn" || T[e.id]); if (S.sel && !T[S.sel]) { S.sel = null; if (!S.stack.length) closeDrawer(); }
@@ -1921,33 +1924,51 @@ function startPoll(ms) {
 }
 startPoll(12000);
 
-/* ---- account bar (team mode): who you are, your access level, and sign-out ---- */
+/* ---- account chip (team mode): who you are, your access level, and a small menu.
+       Compact on desktop and phone; a tap opens the menu, so it never blocks the app. ---- */
+async function acctAction(a) {
+  if (a === "logout") { await fetch("/api/logout", {method: "POST"}); location.href = "/login"; }
+  else if (a === "users") { location.href = "/users"; }
+  else if (a === "pw") {
+    const cur = prompt("Your current password:"); if (!cur) return;
+    const nw = prompt("New password (at least 6 characters):"); if (!nw) return;
+    const r = await fetch("/api/password", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({current: cur, new: nw})});
+    const j = await r.json().catch(() => ({})); toast(r.ok ? "Password changed" : (j.error || "Could not change password"), !r.ok);
+  }
+}
 function accountBar() {
   if (!S.me || !S.me.shared) return;
-  let bar = document.getElementById("acctbar");
-  if (!bar) {
-    bar = document.createElement("div"); bar.id = "acctbar";
-    bar.style.cssText = "position:fixed;top:6px;right:10px;z-index:9999;display:flex;gap:8px;align-items:center;font:12px/1.4 system-ui,Segoe UI,Arial;background:rgba(255,255,255,.92);border:1px solid #d9dee6;border-radius:8px;padding:4px 8px;box-shadow:0 1px 4px rgba(0,0,0,.08)";
-    document.body.appendChild(bar);
-    bar.addEventListener("click", async e => {
-      const a = e.target.dataset.acct; if (!a) return;
-      if (a === "logout") { await fetch("/api/logout", {method: "POST"}); location.href = "/login"; }
-      else if (a === "users") { location.href = "/users"; }
-      else if (a === "pw") {
-        const cur = prompt("Your current password:"); if (!cur) return;
-        const nw = prompt("New password (at least 6 characters):"); if (!nw) return;
-        const r = await fetch("/api/password", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({current: cur, new: nw})});
-        const j = await r.json().catch(() => ({})); toast(r.ok ? "Password changed" : (j.error || "Could not change password"), !r.ok);
-      }
+  const roleTxt = {master: "Master", editor: "Editor", viewer: "Viewer"}[S.me.role] || S.me.role;
+  const roleColor = {master: "#8e44ad", editor: "#1e7d34", viewer: "#6b7280"}[S.me.role] || "#333";
+  const nm = (S.me.name || S.me.user);
+  let wrap = document.getElementById("acctwrap");
+  if (!wrap) {
+    wrap = document.createElement("div"); wrap.id = "acctwrap";
+    wrap.style.cssText = "position:fixed;top:6px;right:8px;z-index:100000;font:12px/1.3 system-ui,Segoe UI,Arial";
+    wrap.innerHTML = `<button id="acctchip" aria-label="Account menu"
+        style="display:flex;gap:6px;align-items:center;background:rgba(255,255,255,.95);border:1px solid #d9dee6;border-radius:999px;padding:4px 10px;box-shadow:0 1px 4px rgba(0,0,0,.12);cursor:pointer;max-width:48vw">
+        <span id="acctdot" style="width:8px;height:8px;border-radius:50%;flex:0 0 auto"></span>
+        <span id="acctname" style="font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></span>
+        <span style="color:#888">▾</span></button>
+      <div id="acctmenu" style="display:none;position:absolute;right:0;top:34px;background:#fff;border:1px solid #d9dee6;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.16);min-width:170px;overflow:hidden"></div>`;
+    document.body.appendChild(wrap);
+    document.getElementById("acctchip").addEventListener("click", e => {
+      e.stopPropagation();
+      const m = document.getElementById("acctmenu"); m.style.display = m.style.display === "none" ? "block" : "none";
+    });
+    document.addEventListener("click", () => { const m = document.getElementById("acctmenu"); if (m) m.style.display = "none"; });
+    wrap.querySelector("#acctmenu").addEventListener("click", async e => {
+      const a = e.target.dataset.acct; if (a) { e.stopPropagation(); document.getElementById("acctmenu").style.display = "none"; await acctAction(a); }
     });
   }
-  const roleTxt = {master: "Master", editor: "Editor", viewer: "Viewer (read only)"}[S.me.role] || S.me.role;
-  const roleColor = {master: "#8e44ad", editor: "#1e7d34", viewer: "#6b7280"}[S.me.role] || "#333";
-  bar.innerHTML = `<span style="font-weight:600">${(S.me.name || S.me.user).replace(/</g, "&lt;")}</span>`
-    + `<span style="color:#fff;background:${roleColor};border-radius:6px;padding:1px 7px;font-size:11px">${roleTxt}</span>`
-    + (S.me.role === "master" ? `<a data-acct="users" style="cursor:pointer;color:#1d4ed8;text-decoration:underline">Users</a>` : "")
-    + `<a data-acct="pw" style="cursor:pointer;color:#555;text-decoration:underline">Password</a>`
-    + `<a data-acct="logout" style="cursor:pointer;color:#b91c1c;text-decoration:underline">Sign out</a>`;
+  document.getElementById("acctdot").style.background = roleColor;
+  document.getElementById("acctname").textContent = nm;
+  document.getElementById("acctmenu").innerHTML =
+      `<div style="padding:9px 12px;border-bottom:1px solid #eef1f5"><div style="font-weight:600">${esc(nm)}</div>`
+    + `<div style="color:#fff;background:${roleColor};border-radius:6px;padding:1px 7px;font-size:11px;display:inline-block;margin-top:3px">${roleTxt}${S.me.role === "viewer" ? " · read only" : ""}</div></div>`
+    + (S.me.role === "master" ? `<a data-acct="users" style="display:block;padding:9px 12px;cursor:pointer;color:#1d4ed8">Users &amp; permissions</a>` : "")
+    + `<a data-acct="pw" style="display:block;padding:9px 12px;cursor:pointer;color:#333">Change password</a>`
+    + `<a data-acct="logout" style="display:block;padding:9px 12px;cursor:pointer;color:#b91c1c;border-top:1px solid #eef1f5">Sign out</a>`;
 }
 
 fetch("/api/me").then(r => r.json()).then(me => { S.me = me; accountBar(); if (me && me.shared) startPoll(4000); })

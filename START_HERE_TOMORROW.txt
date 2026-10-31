@@ -1,0 +1,57 @@
+========================================================================
+  BLEND HUB - TEAM MODE  ·  START HERE (read this first)
+========================================================================
+
+Vishnu - everything is built and tested. To go live, there is ONE thing
+that only you can do: run it on this PC (I cannot switch your office PC on
+from outside). It is a single double-click.
+
+------------------------------------------------------------------------
+STEP 1  (once) - get the updated files onto this PC
+------------------------------------------------------------------------
+If you downloaded a fresh copy from GitHub (branch
+"claude/laughing-shannon-v3lv3p"), copy the "scripts" folder and the new
+.bat / .md / .txt files into your existing Hub folder:
+
+   C:\Users\VishnuVijayakumar\OneDrive - Blend Financial Services Ltd\EPC Deck
+
+Say YES to replacing files. DO NOT touch the "data", "base" folders or
+config.json - your deals and decks stay exactly as they are.
+
+------------------------------------------------------------------------
+STEP 2  - start everything
+------------------------------------------------------------------------
+Double-click:   BLEND_HUB.bat
+
+   - Two small black windows open (the server + the internet link).
+     Leave them open (you can minimise them).
+   - In a few seconds a web link appears, like:
+         https://something-random.trycloudflare.com
+     It is also saved in the file  LINK.txt  in this folder,
+     and your browser opens it automatically.
+
+The FIRST time only, the SERVER window shows a master username + password.
+WRITE IT DOWN. Sign in with it, then (top-right menu) open
+"Users & permissions" to add your wife and your team, and to tick exactly
+what Viewers / Editors can see and do.
+
+------------------------------------------------------------------------
+STEP 3  - use it on the phones + laptop
+------------------------------------------------------------------------
+Send the link (from LINK.txt) to each person. They open it in their phone
+browser (iPhone = Safari, Android = Chrome) or laptop, sign in with the
+username + password you gave them. On a phone they can tap Share ->
+"Add to Home Screen" so it behaves like an app.
+
+Changes anyone makes appear on everyone else's screen within a few seconds.
+Every change is logged with who made it and what changed.
+
+------------------------------------------------------------------------
+HANDY
+------------------------------------------------------------------------
+* Want it to start by itself after a reboot?  Run INSTALL_AUTOSTART.bat once.
+* Keep this PC awake during work hours (Settings > Power > Sleep = Never).
+* A brand-new deal starts as "Preliminary", which the default view hides -
+  tick "Show Preliminary" in the filters, or set its status, to see it.
+* Full details: TEAM_SETUP.md  ·  For the team: FOR_THE_TEAM.md
+========================================================================

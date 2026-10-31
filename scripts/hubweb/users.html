@@ -71,6 +71,23 @@
     </table>
     <div class="msg" id="rowmsg"></div>
   </div>
+
+  <div class="panel">
+    <h2>What each role can do &amp; see</h2>
+    <p class="help">Tick exactly what <b>Viewers</b> and <b>Editors</b> are allowed to do and see. Masters always have everything.
+      Changes apply to everyone the next time their screen refreshes (a few seconds).</p>
+    <div style="overflow-x:auto">
+      <table id="perms">
+        <thead><tr><th style="min-width:220px">Capability</th><th style="text-align:center">Viewer</th><th style="text-align:center">Editor</th><th style="text-align:center;color:#8e44ad">Master</th></tr></thead>
+        <tbody id="permrows"><tr><td colspan="4" class="tiny">Loading…</td></tr></tbody>
+      </table>
+    </div>
+    <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <button class="btn pri" id="permsave">Save permissions</button>
+      <button class="btn" id="permreset">Reset to recommended defaults</button>
+    </div>
+    <div class="msg" id="permmsg"></div>
+  </div>
 </div>
 <script>
 const $ = s => document.querySelector(s);
@@ -149,7 +166,59 @@ $("#rows").addEventListener("click", async e => {
   } catch (ex) { flash($("#rowmsg"), ex.message, false); }
 });
 
+/* ---------------- permission matrix ---------------- */
+let CAPS = [], DEFAULTS = {};
+async function loadPerms() {
+  const r = await fetch("/api/perms");
+  if (r.status === 401) { location.href = "/login"; return; }
+  if (!r.ok) return;
+  const d = await r.json();
+  CAPS = d.caps; DEFAULTS = d.defaults;
+  renderPerms(d.perms);
+}
+function renderPerms(perms) {
+  const tb = $("#permrows"); tb.innerHTML = "";
+  let lastGroup = null;
+  CAPS.forEach(([key, label, group]) => {
+    if (group !== lastGroup) {
+      lastGroup = group;
+      const gr = document.createElement("tr");
+      gr.innerHTML = `<td colspan="4" style="background:#f3f5f9;font-weight:600;font-size:12px;color:#444">${esc(group)}</td>`;
+      tb.appendChild(gr);
+    }
+    const p = perms[key] || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td>${esc(label)}</td>`
+      + `<td style="text-align:center"><input type="checkbox" data-cap="${key}" data-role="viewer"${p.viewer ? " checked" : ""}></td>`
+      + `<td style="text-align:center"><input type="checkbox" data-cap="${key}" data-role="editor"${p.editor ? " checked" : ""}></td>`
+      + `<td style="text-align:center"><input type="checkbox" checked disabled title="Masters always have every capability"></td>`;
+    tb.appendChild(tr);
+  });
+}
+function collectPerms() {
+  const out = {};
+  document.querySelectorAll('#permrows input[data-cap]').forEach(cb => {
+    const cap = cb.dataset.cap, role = cb.dataset.role;
+    (out[cap] = out[cap] || {})[role] = cb.checked;
+  });
+  return out;
+}
+$("#permsave").addEventListener("click", async () => {
+  try {
+    const r = await fetch("/api/perms/save", {method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({perms: collectPerms()})});
+    if (r.status === 401) { location.href = "/login"; return; }
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok) throw new Error(j.error || "Save failed");
+    flash($("#permmsg"), "Permissions saved. They apply to everyone on their next refresh.", true);
+  } catch (ex) { flash($("#permmsg"), ex.message, false); }
+});
+$("#permreset").addEventListener("click", () => {
+  renderPerms(DEFAULTS);
+  flash($("#permmsg"), "Reset to recommended defaults — click 'Save permissions' to apply.", true);
+});
+
 refresh();
+loadPerms();
 </script>
 </body>
 </html>

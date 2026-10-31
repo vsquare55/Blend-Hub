@@ -26,14 +26,38 @@ WEB = Path(__file__).resolve().parent / "hubweb"
 PORT = 8765
 SHARED = bool(os.environ.get("HUB_SHARE"))  # team mode: login + roles on, bind to the network
 
-# POST endpoints only a master may call (destructive, structural or admin). Everything
-# else that writes needs Editor or Master; viewers may not POST at all.
-MASTER_ONLY = {
-    "/api/txn/trash", "/api/party/delete", "/api/party/merge", "/api/party/dedupe",
-    "/api/vocab/merge", "/api/vocab/dedupe", "/api/geo", "/api/source/rename",
-    "/api/import", "/api/restore", "/api/restore_backup",
-    "/api/deck/delete", "/api/deck/retire", "/api/deck/rename", "/api/deck/move",
-    "/api/deck/add", "/api/deck/restore",
+# Which capability each writing endpoint needs. The master can hand each capability
+# to Editors and/or Viewers from the Users page; a master always has every capability.
+# Anything that writes and is NOT in this map falls back to 'edit_txn' (fail-safe: never
+# silently open to viewers, because a viewer only gets caps the master ticked).
+PATH_CAP = {
+    "/api/txn": "edit_txn", "/api/txn/bulk": "edit_txn", "/api/txn/dup": "edit_txn",
+    "/api/txn/trash": "delete_txn",
+    "/api/txn/todeck": "generate_decks",
+    "/api/comment": "comment", "/api/comment/edit": "comment",
+    "/api/need": "track", "/api/chk": "track", "/api/chk/del": "track", "/api/chk/bulk": "track",
+    "/api/action": "track", "/api/action/bulk": "track", "/api/action/update": "track", "/api/review": "track",
+    "/api/meeting/add": "track", "/api/meeting/update": "track", "/api/meeting/latest": "track",
+    "/api/link": "counterparty", "/api/link/del": "counterparty", "/api/link/bulk": "counterparty",
+    "/api/party": "counterparty", "/api/party/new": "counterparty", "/api/party/bulk": "counterparty",
+    "/api/party/bulk_add": "counterparty", "/api/party/bulk_edit": "counterparty",
+    "/api/party/dedupe": "manage_lists", "/api/party/merge": "manage_lists", "/api/party/delete": "manage_lists",
+    "/api/vocab/dedupe": "manage_lists", "/api/vocab/merge": "manage_lists", "/api/vocab/suggest": "manage_lists",
+    "/api/geo": "geography", "/api/source/rename": "geography",
+    "/api/access": "access_edit", "/api/access/del": "access_edit",
+    "/api/deck/generate": "generate_decks", "/api/deck/update": "generate_decks", "/api/deck/open": "generate_decks",
+    "/api/deck/add": "manage_decks", "/api/deck/delete": "manage_decks", "/api/deck/rename": "manage_decks",
+    "/api/deck/move": "manage_decks", "/api/deck/retire": "manage_decks", "/api/deck/restore": "manage_decks",
+    "/api/deck/openfile": "manage_decks",
+    "/api/import": "import_data", "/api/restore": "import_data", "/api/restore_backup": "import_data",
+    "/api/backup": "backup",
+    "/api/print": "export", "/api/report": "export", "/api/export": "export",
+    "/api/undo": "edit_txn", "/api/undo/last": "edit_txn", "/api/redo/last": "edit_txn",
+}
+# GET endpoints that reveal something a viewer might be blocked from seeing.
+GET_CAP = {
+    "/api/history": "see_activity", "/api/changes": "see_activity",
+    "/api/xl/new": "export", "/api/xl/get": "export",
 }
 _SRC = [*Path(__file__).resolve().parent.glob("*.py"), WEB / "index.html"]
 VER = str(int(max(f.stat().st_mtime for f in _SRC if f.exists())))  # changes whenever the program files change
@@ -91,6 +115,30 @@ class Handler(BaseHTTPRequestHandler):
         maxage = A.SESSION_HOURS * 3600 if token else 0
         return {"Set-Cookie": f"{A.cookie_name()}={token or ''}; Path=/; HttpOnly; SameSite=Lax; Max-Age={maxage}"}
 
+    def _visible_snapshot(self, hide) -> dict:
+        """A data snapshot with the signed-in user's visibility rules applied (team mode).
+        Used for the on-screen data AND for every print/export, so a hidden value never leaks via a file."""
+        d = H.snapshot(hide)
+        sess = getattr(self, "_sess", None)
+        if not (SHARED and sess):
+            return d
+        role = sess["role"]
+        d["me"] = {"user": sess["username"], "name": sess["name"], "role": role, "caps": A.caps_for(role)}
+        if role == "master":
+            return d
+        perms = A.get_perms()
+        d["me"]["caps"] = A.caps_for(role, perms)
+        if not A.cap_allowed("see_values", role, perms):
+            for t in d.get("txns", []):
+                t["value"] = ""
+                t["value_orig"] = ""
+        if not A.cap_allowed("see_comments", role, perms):
+            d["comments"] = []
+        if not A.cap_allowed("see_activity", role, perms):
+            d["undo"] = None
+            d["redo"] = None
+        return d
+
     # ------------------------------------------------------------------ GET
     def do_GET(self):
         u = urllib.parse.urlparse(self.path)
@@ -108,7 +156,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"error": "Please sign in.", "login": True}, 401)
                 return self._send(302, b"", "text/plain", {"Location": "/login"})
             if u.path == "/api/me":
-                return self._json({"shared": True, "user": sess["username"], "name": sess["name"], "role": sess["role"]})
+                return self._json({"shared": True, "user": sess["username"], "name": sess["name"], "role": sess["role"],
+                                   "caps": A.caps_for(sess["role"])})
+            if u.path == "/api/perms":
+                if sess["role"] != "master":
+                    return self._json({"error": "Only a master can view permissions."}, 403)
+                return self._json({"perms": A.get_perms(), "caps": A.CAPS, "defaults": A.DEFAULT_PERMS})
+            if u.path in GET_CAP and not A.cap_allowed(GET_CAP[u.path], sess["role"]):
+                if u.path in ("/api/history", "/api/changes"):
+                    return self._json([])  # the UI renders an empty list cleanly
+                return self._json({"error": "You don't have access to that."}, 403)
             if u.path == "/api/users":
                 if sess["role"] != "master":
                     return self._json({"error": "Only a master can manage users."}, 403)
@@ -121,7 +178,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"shared": False, "user": getpass.getuser(), "name": getpass.getuser().replace(".", " ").title(), "role": "master"})
         try:
             if u.path == "/api/all":
-                d = H.snapshot(self._hide())
+                d = self._visible_snapshot(self._hide())
                 d["lock"] = self._lock_info()
                 d["default_user"] = getpass.getuser().replace(".", " ").title()
                 return self._json(d)
@@ -222,10 +279,16 @@ class Handler(BaseHTTPRequestHandler):
                     return self._json({"ok": True})
                 except A.AuthError as e:
                     return self._json({"error": str(e)}, 400)
-            if sess["role"] == "viewer":
-                return self._json({"error": "You have view-only access. Ask a master to make you an Editor to change things."}, 403)
-            if u.path in MASTER_ONLY and sess["role"] != "master":
-                return self._json({"error": "That action needs master access."}, 403)
+            if u.path == "/api/perms/save":
+                if sess["role"] != "master":
+                    return self._json({"error": "Only a master can change permissions."}, 403)
+                d = json.loads(raw.decode("utf-8") or "{}")
+                A.set_perms(d.get("perms", {}))
+                return self._json({"ok": True, "perms": A.get_perms()})
+            if u.path != "/api/lock/take":  # lock/take is a harmless no-op in single-server team mode
+                cap = PATH_CAP.get(u.path, "edit_txn")  # unknown write path -> fail-safe to the edit capability
+                if not A.cap_allowed(cap, sess["role"]):
+                    return self._json({"error": "You don't have permission to do that. Ask a master to enable it for your role."}, 403)
             by = sess["name"] or sess["username"]
         else:
             by = urllib.parse.unquote(self.headers.get("X-User", "")) or LOCK.user
@@ -364,7 +427,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._json({"ok": True})
             if u.path == "/api/print":
                 import hubprint
-                snap = H.snapshot(self._hide())
+                snap = self._visible_snapshot(self._hide())
                 kind, opts, fmt = d.get("kind", "register"), d.get("opts", {}), d.get("format", "pdf")
                 if fmt == "xlsx":
                     f = hubprint.build_xlsx(kind, snap, d["ids"], opts, Path(tempfile.mkdtemp()) / "Blend.xlsx")
@@ -389,7 +452,7 @@ class Handler(BaseHTTPRequestHandler):
                 return self._send(200, f.read_bytes(), ctype, {"Content-Disposition": f'inline; filename="Blend_{kind}_{time.strftime("%Y%m%d")}{f.suffix}"'})
             if u.path == "/api/report":
                 import hubreport
-                snap = H.snapshot(self._hide())
+                snap = self._visible_snapshot(self._hide())
                 opts = d.get("opts", {})
                 if d.get("format") == "pdf":
                     f = hubreport.build_pdf(snap, d["ids"], opts)

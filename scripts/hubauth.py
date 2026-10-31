@@ -61,6 +61,7 @@ def _connect() -> sqlite3.Connection:
              created_by TEXT DEFAULT '',
              last_login TEXT DEFAULT '')"""
     )
+    c.execute("CREATE TABLE IF NOT EXISTS settings (k TEXT PRIMARY KEY, v TEXT)")
     c.commit()
     return c
 
@@ -271,6 +272,107 @@ def bootstrap() -> Optional[dict]:
         username = f"admin{secrets.token_hex(2)}"
     add_user(username, name="Administrator", role="master", password=password, by="system", must_change=True)
     return {"username": username, "password": password}
+
+
+# --------------------------------------------------------------------------- settings & customizable permissions
+def get_setting(key: str) -> Optional[str]:
+    c = _connect()
+    try:
+        r = c.execute("SELECT v FROM settings WHERE k=?", (key,)).fetchone()
+        return r["v"] if r else None
+    finally:
+        c.close()
+
+
+def set_setting(key: str, value: str) -> None:
+    c = _connect()
+    try:
+        c.execute("INSERT INTO settings(k,v) VALUES(?,?) ON CONFLICT(k) DO UPDATE SET v=excluded.v", (key, value))
+        c.commit()
+    finally:
+        c.close()
+
+
+# Every capability the master can hand out. (key, label, group). Master always has all of them.
+CAPS = [
+    ("edit_txn",       "Add & edit transactions",                         "Change deals"),
+    ("delete_txn",     "Delete / trash transactions",                     "Change deals"),
+    ("comment",        "Add & edit comments",                             "Discussion & tracking"),
+    ("track",          "Needs, checklist, actions, meetings, reviews",    "Discussion & tracking"),
+    ("counterparty",   "Link EPCs / banks / investors (counterparties)",  "Discussion & tracking"),
+    ("generate_decks", "Generate client decks",                           "Decks"),
+    ("manage_decks",   "Add / delete / reorder slides in the base deck",  "Decks"),
+    ("manage_lists",   "Merge & clean up lists / duplicate names",        "Admin data"),
+    ("geography",      "Change geography / leads (bosses)",               "Admin data"),
+    ("access_edit",    "Edit the access / relationship records",          "Admin data"),
+    ("import_data",    "Import the BIP file / restore from a backup",     "Admin data"),
+    ("backup",         "Make backups",                                    "Admin data"),
+    ("export",         "Print, PDF & Excel export / downloads",           "Output"),
+    ("see_values",     "See deal values (the € amounts)",                 "What they can SEE"),
+    ("see_comments",   "See comments / discussion",                       "What they can SEE"),
+    ("see_activity",   "See the change log & history",                    "What they can SEE"),
+]
+CAP_KEYS = [c[0] for c in CAPS]
+
+DEFAULT_PERMS = {
+    "edit_txn":       {"viewer": False, "editor": True},
+    "delete_txn":     {"viewer": False, "editor": False},
+    "comment":        {"viewer": False, "editor": True},
+    "track":          {"viewer": False, "editor": True},
+    "counterparty":   {"viewer": False, "editor": True},
+    "generate_decks": {"viewer": False, "editor": True},
+    "manage_decks":   {"viewer": False, "editor": False},
+    "manage_lists":   {"viewer": False, "editor": False},
+    "geography":      {"viewer": False, "editor": False},
+    "access_edit":    {"viewer": False, "editor": True},
+    "import_data":    {"viewer": False, "editor": False},
+    "backup":         {"viewer": False, "editor": True},
+    "export":         {"viewer": True,  "editor": True},
+    "see_values":     {"viewer": True,  "editor": True},
+    "see_comments":   {"viewer": True,  "editor": True},
+    "see_activity":   {"viewer": True,  "editor": True},
+}
+
+
+def get_perms() -> dict:
+    """Stored permission matrix merged over the defaults (so new capabilities get sensible defaults)."""
+    out = {k: dict(v) for k, v in DEFAULT_PERMS.items()}
+    raw = get_setting("perms")
+    if raw:
+        try:
+            stored = json.loads(raw)
+            for cap, roles in stored.items():
+                if cap in out and isinstance(roles, dict):
+                    for r in ("viewer", "editor"):
+                        if r in roles:
+                            out[cap][r] = bool(roles[r])
+        except Exception:
+            pass
+    return out
+
+
+def set_perms(perms: dict) -> None:
+    clean = {}
+    for cap in CAP_KEYS:
+        roles = perms.get(cap, {}) if isinstance(perms, dict) else {}
+        clean[cap] = {"viewer": bool(roles.get("viewer", DEFAULT_PERMS[cap]["viewer"])),
+                      "editor": bool(roles.get("editor", DEFAULT_PERMS[cap]["editor"]))}
+    set_setting("perms", json.dumps(clean))
+
+
+def cap_allowed(cap: str, role: str, perms: Optional[dict] = None) -> bool:
+    if role == "master":
+        return True
+    if perms is None:
+        perms = get_perms()
+    return bool(perms.get(cap, {}).get(role, False))
+
+
+def caps_for(role: str, perms: Optional[dict] = None) -> dict:
+    """Every capability -> True/False for one role (used by the UI to show/hide things)."""
+    if perms is None:
+        perms = get_perms()
+    return {cap: cap_allowed(cap, role, perms) for cap in CAP_KEYS}
 
 
 if __name__ == "__main__":  # tiny CLI: python hubauth.py add <user> <role> <password>

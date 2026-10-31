@@ -39,8 +39,12 @@ Either:
   (`dist\DealDeck_Studio_Portable_<date>.zip`) somewhere like `C:\BlendHub`.
   The portable copy has Python inside it, so nothing needs installing.
 
-### A3. Start the Hub in team mode
-Double-click **`START_TEAM.bat`**.
+### A3. Start everything (one double-click)
+Double-click **`BLEND_HUB.bat`**. It opens the Hub **and** the internet link together,
+then shows the web address to share (also saved to `LINK.txt`) and opens it for you.
+
+*(If you ever want to run the pieces separately: `START_TEAM.bat` is just the Hub, and
+`START_TUNNEL.bat` is just the internet link. `BLEND_HUB.bat` runs both.)*
 
 A black window opens. **The very first time**, it prints your master login, like:
 
@@ -57,17 +61,11 @@ A black window opens. **The very first time**, it prints your master login, like
 > password (top-right → **Password**).
 
 ### A4. Get the internet link
-Open a **second** window and double-click **`START_TUNNEL.bat`**.
-After a few seconds it prints a web address like:
+`BLEND_HUB.bat` already did this — the address (like `https://brave-tiger-1234.trycloudflare.com`)
+is shown in the window and saved in **`LINK.txt`**. **That is the link your team uses.**
+Test it yourself: open it, sign in with your master login, you should see the Hub.
 
-```
-https://brave-tiger-1234.trycloudflare.com
-```
-
-**That is the link your team uses.** Test it yourself first: open it in a browser, sign in with your
-master login. You should see the Hub.
-
-Keep **both** windows (Hub + tunnel) open.
+Keep the helper windows open (you can minimise them).
 
 ### A5. Stop the PC from sleeping
 So the Hub doesn't disappear when you step away:
@@ -88,18 +86,27 @@ Signed in as master, click **Users** (top-right). For each of the ~10 people:
 | **Editor** | Add & change deals, comments, needs, actions; generate decks; print/export. Cannot manage users or do destructive/structural actions. |
 | **Viewer** | Read everything, print & export. Cannot change anything. |
 
+### A7. Choose exactly what each role can see & do (optional, fully customizable)
+On the **Users & permissions** page there's a **"What each role can do & see"** grid.
+Tick precisely what **Viewers** and **Editors** are allowed to do (edit deals, comment, generate
+decks, delete, import, etc.) and see (deal **values**, **comments**, the **change log**). Masters
+always have everything. Click **Save**; it applies to everyone within a few seconds. Sensible
+defaults are set already, and **Reset to recommended defaults** is one click away.
+
 That's it — you're live.
+
+> **Heads-up about new deals:** a brand-new deal starts as **"Preliminary"**, and the default
+> view hides Preliminary deals. If you add one and "can't see it", tick **Show Preliminary** in
+> the filters (or set its status). Editing existing deals always shows up live.
 
 ---
 
 ## Part B — Everyday use
 
-**To bring the Hub online:**
-1. Double-click **`START_TEAM.bat`** (wait for "running").
-2. Double-click **`START_TUNNEL.bat`** (wait for the `https://…` link).
-3. Share the link if it changed (see note below).
+**To bring the Hub online:** double-click **`BLEND_HUB.bat`**. Done.
+(Want it to start by itself after a reboot? Run **`INSTALL_AUTOSTART.bat`** once.)
 
-**To take it offline:** close both black windows.
+**To take it offline:** close the two black helper windows.
 
 > **About the link changing:** with the free "quick tunnel", the `https://…trycloudflare.com` address
 > can change **each time you restart `START_TUNNEL.bat`**. While that window stays open, the link is stable.

@@ -6,7 +6,7 @@ rem  anywhere - no router changes, no company IT, no fixed IP needed.
 rem  Keep this window OPEN. The link is also written to LINK.txt in this folder.
 rem  First run downloads cloudflared.exe (~35 MB) once.
 rem ===========================================================================
-setlocal EnableDelayedExpansion
+setlocal
 title Blend Hub - Internet link (keep open)
 cd /d "%~dp0"
 set "CF=%~dp0cloudflared.exe"
@@ -30,26 +30,10 @@ echo  Starting the internet link... your team address will appear below
 echo  (and be saved to LINK.txt) in a few seconds. Keep this window open.
 echo  ---------------------------------------------------------------
 echo.
-rem Run the tunnel; echo every line so you can see it, and grab the https link into LINK.txt
-for /f "usebackq delims=" %%L in (`"%CF%" tunnel --url http://localhost:8765 2^>^&1`) do (
-  echo %%L
-  echo %%L | findstr /c:"trycloudflare.com" >nul && (
-    for %%W in (%%L) do (
-      echo %%W | findstr /c:"https://" >nul && (
-        if not exist "%~dp0LINK.txt" (
-          >"%~dp0LINK.txt" echo %%W
-          echo.
-          echo  ============================================================
-          echo    YOUR TEAM LINK  (open on phones + laptops, then sign in):
-          echo        %%W
-          echo    ^(also saved in LINK.txt in this folder^)
-          echo  ============================================================
-          echo.
-        )
-      )
-    )
-  )
-)
+rem Run the tunnel through PowerShell so we can reliably pull the https link
+rem out of its output and save it to LINK.txt, while still showing it live.
+powershell -NoProfile -ExecutionPolicy Bypass -Command ^
+  "& '%CF%' tunnel --url http://localhost:8765 2>&1 | ForEach-Object { Write-Host $_; if ($_ -match 'https://[A-Za-z0-9.-]+\.trycloudflare\.com') { $u=$Matches[0]; if (-not (Test-Path '%~dp0LINK.txt')) { Set-Content -Path '%~dp0LINK.txt' -Value $u -Encoding ascii; Write-Host ''; Write-Host '  ============================================================'; Write-Host ('   YOUR TEAM LINK (open on phones + laptops, then sign in):'); Write-Host ('       ' + $u); Write-Host '   (also saved in LINK.txt in this folder)'; Write-Host '  ============================================================'; Write-Host '' } } }"
 echo.
 echo  The internet link has stopped. Close this window or run it again.
 pause

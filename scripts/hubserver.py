@@ -603,10 +603,15 @@ def main():
     if empty:
         for cand in (Path.home() / "Downloads" / "BIP - Captive Projects.xlsx", H.ROOT / "BIP - Captive Projects.xlsx"):
             if cand.exists():
-                import hubimport
-                print("First start: loading", cand)
-                hubimport.import_bip(cand)
-                hubimport.import_madagascar()
+                try:
+                    import hubimport
+                    print("First start: loading", cand)
+                    hubimport.import_bip(cand)
+                    hubimport.import_madagascar()
+                except Exception as exc:
+                    # Never let an optional first-start import stop the Hub from starting
+                    # (e.g. the base deck is missing). The Hub opens empty; import later from the app.
+                    print(f"First-start import skipped ({type(exc).__name__}: {exc}). The Hub will start empty - you can import later.")
                 break
     srv = ThreadingHTTPServer(("0.0.0.0" if os.environ.get("HUB_SHARE") else "127.0.0.1", PORT), Handler)
     print(f"Blend Hub running at http://127.0.0.1:{PORT}  (close this window to stop)")

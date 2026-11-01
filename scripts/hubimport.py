@@ -229,7 +229,10 @@ def import_bip(path: Path, by: str = "Import") -> dict:
     if not rows:
         raise H.HubError("No project table was found in that file.")
     groups = group_rows(rows)
-    deck = core.load_projects("EPC", include_retired=True)["projects"]
+    try:
+        deck = core.load_projects("EPC", include_retired=True)["projects"]
+    except Exception:
+        deck = []  # base deck not present: import the pipeline data anyway (linking to deck slides is optional)
     dm = sf.match_projects(deck, rows)
     row_deck: Dict[Tuple[str, int], str] = {}
     for k, v in dm.items():
